@@ -1,0 +1,1029 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+
+<head>
+    <meta charset="utf-8">
+    <title></title>
+    <meta name="viewport"
+          content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no"/>
+    <!--   禁止缓存-->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <link href="../static/css/mui.min.css" rel="stylesheet"/>
+    <link rel="stylesheet" href="../static/css/liMarquee.css"/>
+    <script type="text/javascript" src="../static/js/jquery-min-3.5.1.js"></script>
+    <script type="text/javascript" src="../static/js/jquery.liMarquee.js"></script>
+    <script type="text/javascript" src="../static/js/mui.min.js"></script>
+    <style>
+    </style>
+</head>
+<input type="hidden" th:value="${page}" id="F_LED_ID"/><!-- 屏幕ID -->
+<input type="hidden" th:value="${page}" id="pageNo"/><!-- 屏幕ID -->
+<input type="hidden" th:value="${audiolimit}" id="audiolimit"/><!-- audio音频极限 -->
+<input type="hidden" th:value="${videoVolumeLimit}" id="videoVolumeLimit"/><!-- 视频音量极限 -->
+<input type="hidden" th:value="${videoVolume}" id="videoVolume"> <!-- 视频音量 -->
+<input type="hidden" id="ttsVoiceOrders"> <!-- 语音包 -->
+<body id="body" style="margin: 0;padding: 0;">
+<audio id="audio" src=""></audio>
+</body>
+<script type="text/javascript">
+    //	var customurl ="http://";
+    var pageinfos = ""; //定义屏幕页面信息
+    //plus和mui都需要初始化，在初始化完成后调用再调用。
+
+    window.onload = loadPage;
+
+    function loadPage() {
+        var page = $("#pageNo").val();
+        // var pageNo = document.getElementById("pageNo").value;
+        //清空一下tts表中是否有残存信息
+        delTtsByPageNo(page);
+        //根据屏幕ID查询屏幕信息
+        restart(page);
+        //监听音频突破极限
+        //设置音量超限
+        var audio = document.getElementById("audio");
+        var audiolimit = document.getElementById("audiolimit").value;
+        if(audiolimit!= null && audiolimit!= '' && audiolimit!= 0&&audiolimit!=undefined){
+            setMaxVoice(audio);
+        }
+        //播放叫号时视频播放需要停止声音
+        // 为audio元素添加事件监听器,开始播报语音时视频播放需要静音，播报完毕后恢复视频播放
+        audio.addEventListener('play', function () {
+            $("video").each(function () {
+                var video = $(this)[0];
+                video.muted = true;
+                // video.play();
+            });
+        });
+    }
+
+    function setMaxVoice() {
+        // 创建音频处理对象AudioContext与webkitAudioContext无区别，只是在不同浏览器的命名
+        var context = new (window.AudioContext || window.webkitAudioContext)();
+        // 创建音频接口输入到mediaElem，则可以通过elSource可以修改其音频
+        var elSource = context.createMediaElementSource(audio);
+        // 创建GainNode(音量处理模块)
+        var gainNode = context.createGain();
+        // 将音量处理模块与mediaElem绑定
+        elSource.connect(gainNode);
+        // AudioDestinationNode接口表示音频图形的最终输出地址，此处为绑定到对应的扬声器
+        gainNode.connect(context.destination);
+        //GainNode的gain实例属性表示增益效果，可以理解为音量放大比例
+        gainNode.gain.value = document.getElementById("audiolimit").value
+    }
+
+    //屏幕可能因为：后启动、断网连不上数据库等等原因，那个表有很多垃圾信息（站点点叫号插入的），
+    //但实际病人早已检查完成了，那些语音信息就不需要叫了因此每次启动程序时清除一下自己屏幕的tts语音信息
+    function delTtsByPageNo(obj) {
+        $.ajax({
+            type: 'post',
+            data: {'page': obj},
+            timeout: 3000,
+            async: true,
+            url: 'deletettsinfoBypageNo',
+            success: function (res) {
+            },
+            error: function (XMLHttpRequest, textStatus, errorThrown) {
+                console.log("网络连接失败,请检查网络连接");
+                setTimeout(function () {
+                    delTtsByPageNo(obj);
+                }, 5000);
+            }
+        })
+    }
+
+    //根据屏幕ID查询屏幕信息
+    function restart(pageNo) {
+        try {
+            $.ajax({
+                type: 'post',
+                data: {
+                    'page': pageNo
+                },
+                timeout: 5000,
+                async: true,
+                url: 'getheightandwidth',
+                success: function (data) {
+                    if (data.screen != null) {
+                        pageinfos = data;
+                        $("#F_LED_ID").val(data.screen.f_LED_ID);
+                        setBackImg(pageinfos);
+                    } else {
+                        alert("暂无数据,请稍后重试");
+                    }
+                },
+                error: function (XMLHttpRequest, textStatus, errorThrown) {
+                    console.log("网络连接失败,请检查网络连接");
+                    setTimeout(function () {
+                        restart(pageNo);
+                    }, 5000);
+                }
+            })
+        } catch (e) {
+            setTimeout(function () {
+                restart(pageNo);
+            }, 5000);
+        }
+    }
+
+    //2.根据屏幕ID查询背景图片
+    //该屏幕中的所有的页面全部生成放置到该位置
+    function setBackImg(pageinfos) {
+        if (pageinfos != null && pageinfos != '') {
+            if (pageinfos.list != null && pageinfos.screen != null) {
+                var list = pageinfos.list;
+                var screen = pageinfos.screen;
+                for (var i = 0; i < list.length; i++) {
+                    var content = '<div';
+                    var idDomName = '';
+                    if (list[i].f_CPAGE_TYPE_ID == 1) {
+                        idDomName = 'specialpage'
+                        content += ' id="' + idDomName + '"'
+                    } else {
+                        idDomName = list[i].f_CPAGE_ID + 'commonpage'
+                        content += ' class="commonpage" id="' + idDomName + '"'
+                    }
+                    content += ' time="' + list[i].f_INTERVAL_TIME + '" f_CPAGE_ID="' + list[i].f_CPAGE_ID +
+                        '"  style="background: url(voice/' + list[i].imgPath +
+                        ') no-repeat;height: ' + screen.f_LED_HEIGHT + 'px;width: ' + screen.f_LED_WIDTH + 'px;"></div>'
+                    $('#body').append(content);
+                    $("#specialpage").hide();
+                    setValueOnBackImg(list[i].f_CPAGE_ID);
+                    //查询视频播放的设置参数以及大小定位
+                    getVideoInfos(list[i].f_CPAGE_ID, idDomName);
+                }
+            }
+        }
+    }
+
+    //设置当为普通页面时在背景图片上列的样式
+    function setValueOnBackImg(f_CPAGE_ID) {
+        $.ajax({
+            type: 'post',
+            data: {
+                'fcpageid': f_CPAGE_ID
+            },
+            timeout: 5000,
+            async: true,
+            url: 'getcolinfos',
+            success: function (res) {
+                if (res != null) {
+                    var content = "";
+                    for (var i = 0; i < res.length; i++) {
+                        var color = 'rgb(' + res[i].f_FONT_COLOR + ')'.colorHex();
+                        content += '<div class="animate" id="' + res[i].f_CCOL_ID +
+                            '" style="white-space: nowrap;' +
+                            'overflow: hidden;position:absolute;top:' + res[i].f_POS_Y +
+                            'px;left:' + res[i].f_POS_X + 'px;display: inline-block;font-size: ' + res[i].f_FONT_SIZE +
+                            'px;font-weight:' + res[i].f_FONT_STYLE + ' ;color: ' + color + ';width: ' + res[i].f_CCOL_WIDTH + 'px;'
+                        //设置左对齐居中 右对齐 0左对齐 1居中  2右对齐
+                        var F_FONT_ALIGNMENT = res[i].f_FONT_ALIGNMENT;
+                        if (F_FONT_ALIGNMENT == 0) {
+                            content += 'text-align:left;'
+                        }
+                        if (F_FONT_ALIGNMENT == 1) {
+                            content += 'text-align:center;'
+                        }
+                        if (F_FONT_ALIGNMENT == 2) {
+                            content += 'text-align:right;'
+                        }
+                        content += '"></div>'
+                    }
+                    $("div[f_CPAGE_ID='" + f_CPAGE_ID + "']").append(content);
+                    var tableIds = [];
+                    for (var m = 0; m < res.length; m++) {
+                        if (tableIds.indexOf(res[m].f_CTABLE_ID) === -1) {
+                            tableIds.push(res[m].f_CTABLE_ID);
+                        }
+                    }
+                    //对应的列中放置
+                    for (var n = 0; n < tableIds.length; n++) {
+                        setColVal(tableIds[n]);
+                    }
+                }
+            },
+            error: function (XMLHttpRequest, textStatus, errorThrown) {
+                console.log("网络连接失败,请检查网络连接");
+                setTimeout(function () {
+                    setValueOnBackImg(f_CPAGE_ID);
+                }, 5000);
+            }
+        })
+    }
+
+
+    //每个单元格设置值
+    //定义变量一些数据需要替换参数 需要存储
+    var replaceObj = {};
+
+    function setColVal(f_CTABLE_ID) {
+        try {
+            //替换参数
+            var replaceParam = replaceObj[f_CTABLE_ID] == undefined ? '' : replaceObj[f_CTABLE_ID];
+            $.ajax({
+                type: 'post',
+                url: 'getColVals',
+                timeout: 5000,
+                async: true,
+                data: {
+                    'f_CTABLE_ID': f_CTABLE_ID,
+                    'replaceParam': replaceParam
+                },
+                //async: false,
+                success: function (result) {
+                    var list = "";
+                    var f_fresh_time = "";
+                    var maxPage = 1;
+                    //判断纵向还是横向当 f_row_count为正数时为纵向 负数时为横向
+                    if (result != null && result != '') {
+                        var resultLen = result.length;
+                        for (var k = 0; k < resultLen; k++) {
+                            var res = result[k];
+                            var f_CCOL_ID = res.f_CCOL_ID;
+                            maxPage = res.maxPage;
+                            //特殊查询替换的参数 需要存储
+                            replaceObj[f_CTABLE_ID] = res.replaceParam == undefined ? '' : res.replaceParam
+                            list = res.list; //获取分组后的list
+                            var f_col_count = res.f_COL_COUNT; //分几列
+                            //行间距
+                            var f_row_space = res.f_ROW_SPACE;
+                            //列间距
+                            var f_col_space = res.f_COL_SPACE;
+                            var f_ccol_height = res.f_CCOL_HEIGHT;
+                            var f_ccol_width = res.f_CCOL_WIDTH;
+                            var f_move_flag = res.f_MOVE_FLAG;
+                            var f_move_speed = (res.f_MOVE_SPEED) / 4;
+                            var f_row_count = res.f_ROW_COUNT;
+                            //是否需要重新加载 1重新加载 0不重新加载
+                            var sys_RELOAD_FLAG = res.sys_RELOAD_FLAG;
+                            //是否需要自动换行 1自动换行 0不自动换行
+                            var f_CCOL_INT2 = res.f_CCOL_INT2;
+                            //类型 当为3时为图片 2时为视频 视频单独处理
+                            var f_CCOL_TYPE_ID = res.f_CCOL_TYPE_ID;
+                            //字体大小
+                            var f_FONT_SIZE = res.f_FONT_SIZE;
+
+                            //特殊查询替换的参数比如图片
+                            var replaceParam = res.replaceParam;
+                            f_fresh_time = res.f_FRESH_TIME;
+                            if (list != null && list.length > 0) {
+                                if (res.f_CPAGE_TYPE_ID == 1) {
+                                    $("#" + f_CCOL_ID).parent().attr("delsql", res.f_CTABLE_DELSQL)
+                                }
+                                var content = "";
+                                // f_row_count 标签显示最大总数 正值纵向  负值横向
+                                //f_move_flag 移动标识  从左到右移动 目前只有一种
+                                // f_move_speed 移动速度
+                                // f_col_count  纵向时 为行数   横向时为列数
+                                // f_col_space  标签之间的距离
+                                //当为纵向时
+                                if (f_row_count > 0) {
+                                    //计算每个名字占用大小
+                                    var row_data_count = Math.abs(f_row_count / f_col_count);
+                                    var span_width = Math.abs(f_ccol_width / row_data_count);
+                                    // var col_parent_width = (f_ccol_width * pageSize + f_col_space);
+                                    //  $("#" + f_CCOL_ID).css("width", Math.abs(col_parent_width) + "px")
+                                    for (var i = 0; i < list.length; i++) {
+                                        //遍历行数 第一行没有行间距 margin-top:' + f_row_space + 'px;
+                                        //标签中的内容 display:inline-block;float:left; width:' + f_ccol_width + 'px;
+                                        content += '<div style="height: ' + f_ccol_height + 'px;';
+                                        if (i !== 0 && i % f_col_count != 0) {
+                                            content += 'margin-top:' + f_row_space + 'px;'
+                                        }
+                                        content += '">';
+                                        var infos = list[i];
+                                        //标签中的内容按照纵向分组
+                                        for (var j = 0; j < infos.length; j++) {
+                                            //定义变量 特殊样式修饰时名称
+                                            var patname = "";
+                                            //判断是否包含特殊的样式修饰
+                                            var specialsty = "";
+                                            //当不为图片时
+                                            if (f_CCOL_TYPE_ID != 3) {
+                                                if (infos[j].indexOf("[;]") != -1) {
+                                                    patname = infos[j].substr(0, infos[j].indexOf("[;]"));
+                                                    //拆分字符串设置样式
+                                                    //判断是否包含颜色
+                                                    if (infos[j].indexOf("color") != -1) {
+                                                        var substr1 = infos[j].substr(infos[j].indexOf("color") + 6);
+                                                        var substr2 = substr1.substr(0, substr1.indexOf(")"))
+                                                        var color = 'rgb(' + substr2 + ')'.colorHex();
+                                                        specialsty += 'color:' + color + ';'
+                                                    }
+                                                    //判断是否包含设置字体大小
+                                                    if (infos[j].indexOf("size") != -1) {
+                                                        var substr1 = infos[j].substr(infos[j].indexOf("size") + 5);
+                                                        var substr2 = substr1.substr(0, substr1.indexOf(")"))
+                                                        specialsty += 'font-size:' + substr2 + 'px;'
+                                                    }
+                                                    //判断是否包含加粗设置
+                                                    if (infos[j].indexOf("style") != -1) {
+                                                        var substr1 = infos[j].substr(infos[j].indexOf("style") + 6);
+                                                        var substr2 = substr1.substr(0, substr1.indexOf(")"))
+                                                        specialsty += 'font-weight:' + substr2 + ';'
+                                                    }
+                                                } else {
+                                                    patname = infos[j];
+                                                }
+                                                //判断是否有自动换行
+                                                if (f_CCOL_INT2 == 1) {
+                                                    specialsty += 'word-wrap: break-word;white-space:break-spaces;'
+                                                    specialsty += 'line-height: ' + f_FONT_SIZE + 'px;'
+                                                } else {
+                                                    specialsty += 'line-height: ' + f_ccol_height + 'px;'
+                                                }
+                                                //当为一个值是不设置margin-top值
+                                                if (j == 0) {
+                                                    // content += '<span style="' + specialsty + ';display:inline-block;height:' + f_ccol_height + 'px;width:' + span_width + 'px;">' + patname + '</span>'
+                                                    content += '<span style="' + specialsty + ';display:inline-block;width:' + span_width + 'px;">' + patname + '</span>'
+                                                } else {
+                                                    //  content += '<span style="' + specialsty + ';display:inline-block;height:' + f_ccol_height + 'px;margin-left:' + f_col_space + 'px;width:' + span_width + 'px;">' + patname + '</span>'
+                                                    content += '<span style="' + specialsty + ';display:inline-block;margin-left:' + f_col_space + 'px;width:' + span_width + 'px;">' + patname + '</span>'
+                                                }
+                                            }
+                                            if (f_CCOL_TYPE_ID == 3 && sys_RELOAD_FLAG == 1) {
+                                                content += '<img  src="data:image/png;base64,' + infos[j] + '" width="' + f_ccol_width + 'px" height="' + f_ccol_height + 'px"/>'
+                                            }
+                                        }
+                                        content += '</div>'
+                                    }
+                                    //当不为图片或者为图片首次加载时
+                                    if ((f_CCOL_TYPE_ID == 3 && sys_RELOAD_FLAG == 1) || f_CCOL_TYPE_ID != 3) {
+                                        $("#" + f_CCOL_ID).empty();
+                                        $("#" + f_CCOL_ID).append(content)
+                                        $("#" + f_CCOL_ID).children().hide();
+                                        var doms = $("#" + f_CCOL_ID).children();
+                                        var len = doms.length;
+                                        //第一列显示
+                                        if (len > 0) {
+                                            for (var m = 0; m < f_col_count; m++) {
+                                                $("#" + f_CCOL_ID).children().eq(m).show();
+                                            }
+                                        }
+                                        var index = f_col_count;
+                                        //不为图片时
+                                        if (maxPage > 1 && len > 0 && f_fresh_time != 0 && f_fresh_time != null && f_CCOL_TYPE_ID != 3) {
+                                            (function(colId, freshTime, colCount, totalLen, startIndex, tableId, resLen, loopK) {
+                                                var currentIndex = startIndex;
+                                                var timer = setInterval(function () {
+                                                    $("#" + colId).children().hide();
+                                                    if (currentIndex >= totalLen) {
+                                                        clearInterval(timer);
+                                                        if (freshTime != 0 && resLen == (loopK + 1)) {
+                                                            setColVal(tableId);
+                                                        }
+                                                    }
+                                                    for (var m = currentIndex; m < currentIndex + colCount; m++) {
+                                                        $("#" + colId).children().eq(m).show();
+                                                    }
+                                                    currentIndex = currentIndex + colCount;
+                                                }, freshTime);
+                                            })(f_CCOL_ID, f_fresh_time, f_col_count, len, index, f_CTABLE_ID, resultLen, k);
+                                        }
+
+                                        //当不用翻页显示数据时
+                                        if (maxPage == 1 && f_fresh_time != 0 && f_fresh_time != null && f_CCOL_TYPE_ID != 3 && resultLen == (k + 1)) {
+                                            setTimeout(function () {
+                                                setColVal(f_CTABLE_ID);
+                                            }, f_fresh_time);
+                                        }
+
+                                        //是否滚动
+                                        if (f_move_flag == 1) {
+                                            $("#" + f_CCOL_ID).liMarquee({
+                                                direction: 'left',
+                                                scrollamount: f_move_speed
+                                            });
+                                        }
+                                    }
+                                } else {
+                                    // f_row_count 标签显示最大总数 正值纵向  负值横向
+                                    //f_move_flag 移动标识  从左到右移动 目前只有一种
+                                    // f_move_speed 移动速度
+                                    // f_col_count  纵向时 为行数   横向时为列数
+                                    // f_col_space  标签之间的距离
+                                    //当为横向时
+
+                                    // var w = (f_ccol_width + f_col_space) * f_row_count;
+                                    //计算一页几行
+                                    var pageRows = Math.abs(Math.ceil(f_row_count / f_col_count));
+                                    var spanWidth = Math.abs(f_ccol_width / f_col_count);
+                                    //遍历行数
+                                    for (var i = 0; i < list.length; i++) {
+                                        //标签中的内容
+                                        content += '<div style="display:inline-block;float:left;width: ' + f_ccol_width + 'px;';
+
+                                        if (i != 0 && i % pageRows != 0) {
+                                            content += 'margin-top:' + f_row_space + 'px;'
+                                        }
+                                        content += '">'
+                                        var infos = list[i];
+                                        //标签中的内容按照纵向分组  遍历列数
+                                        for (var j = 0; j < infos.length; j++) {
+                                            //当不为图片时
+                                            if (f_CCOL_TYPE_ID != 3) {
+                                                //定义变量 特殊样式修饰时名称
+                                                var patname = "";
+                                                //判断是否包含特殊的样式修饰
+                                                var specialsty = "";
+                                                if (infos[j].indexOf("[;]") != -1) {
+                                                    patname = infos[j].substr(0, infos[j].indexOf("[;]"));
+                                                    //拆分字符串设置样式
+                                                    //判断是否包含颜色
+                                                    if (infos[j].indexOf("color") != -1) {
+                                                        var substr1 = infos[j].substr(infos[j].indexOf("color") + 6);
+                                                        var substr2 = substr1.substr(0, substr1.indexOf(")"))
+                                                        var color = 'rgb(' + substr2 + ')'.colorHex();
+                                                        specialsty += 'color:' + color + ';'
+                                                    }
+                                                    //判断是否包含设置字体大小
+                                                    if (infos[j].indexOf("size") != -1) {
+                                                        var substr1 = infos[j].substr(infos[j].indexOf("size") + 5);
+                                                        var substr2 = substr1.substr(0, substr1.indexOf(")"))
+                                                        specialsty += 'font-size:' + substr2 + 'px;'
+                                                    }
+                                                    //判断是否包含加粗设置
+                                                    if (infos[j].indexOf("style") != -1) {
+                                                        var substr1 = infos[j].substr(infos[j].indexOf("style") + 6);
+                                                        var substr2 = substr1.substr(0, substr1.indexOf(")"))
+                                                        specialsty += 'font-weight:' + substr2 + ';'
+                                                    }
+                                                } else {
+                                                    patname = infos[j];
+                                                }
+                                                //判断是否有自动换行
+                                                //判断是否有自动换行
+                                                if (f_CCOL_INT2 == 1) {
+                                                    specialsty += 'word-wrap: break-word;white-space:break-spaces;'
+                                                    specialsty += 'line-height: ' + f_FONT_SIZE + 'px;'
+                                                } else {
+                                                    specialsty += 'line-height: ' + f_ccol_height + 'px;'
+                                                }
+                                                // content += '<span style="' + specialsty + ';' +
+                                                //     'display:inline-block;height: ' + f_ccol_height + 'px;width:'+spanWidth+'px';
+
+                                                content += '<span style="' + specialsty + ';' +
+                                                    'display:inline-block;width:' + spanWidth + 'px';
+
+                                                //当等于0时没有margin-top值
+                                                if (j != 0) {
+                                                    content += ';margin-left:' + f_col_space + 'px;';
+                                                }
+                                                content += '">' + patname + '</span>';
+                                            }
+                                            if (f_CCOL_TYPE_ID == 3 && sys_RELOAD_FLAG == 1) {
+                                                content += '<img  src="data:image/png;base64,' + infos[j] + '" width="' + f_ccol_width + 'px" height="' + f_ccol_height + 'px"/>'
+                                            }
+                                        }
+                                        content += '</div>';
+                                    }
+                                    //当为图片首次加载或者 不为图片时
+                                    if ((f_CCOL_TYPE_ID == 3 && sys_RELOAD_FLAG == 1) || f_CCOL_TYPE_ID != 3) {
+                                        $("#" + f_CCOL_ID).empty();
+                                        $("#" + f_CCOL_ID).append(content);
+                                        $("#" + f_CCOL_ID).children().hide();
+                                        var doms = $("#" + f_CCOL_ID).children();
+                                        var len = doms.length;
+
+                                        if (len > 0) {
+                                            for (var n = 0; n < pageRows; n++) {
+                                                $("#" + f_CCOL_ID).children().eq(n).show();
+                                            }
+                                        }
+
+                                        var index = pageRows;
+                                        // var index = f_col_count;
+                                        if (maxPage > 1 && len > 0 && f_fresh_time != 0 && f_fresh_time != null && f_CCOL_TYPE_ID != 3) {
+                                            (function(colId, freshTime, rows, totalLen, startIndex, tableId, resLen, loopK) {
+                                                var currentIndex = startIndex;
+                                                var timer = setInterval(function () {
+                                                    $("#" + colId).children().hide();
+                                                    for (var n = currentIndex; n < currentIndex + rows; n++) {
+                                                        $("#" + colId).children().eq(n).show();
+                                                    }
+                                                    if (currentIndex >= totalLen) {
+                                                        clearInterval(timer);
+                                                        if (freshTime != 0 && resLen == (loopK + 1)) {
+                                                            setColVal(tableId);
+                                                        }
+                                                    }
+                                                    //   currentIndex = currentIndex + f_col_count;
+                                                    currentIndex = currentIndex + rows;
+                                                }, freshTime);
+                                            })(f_CCOL_ID, f_fresh_time, pageRows, len, index, f_CTABLE_ID, resultLen, k);
+                                        }
+
+                                        //当不用翻页显示数据时
+                                        if (maxPage == 1 && f_fresh_time != 0 && f_fresh_time != null && f_CCOL_TYPE_ID != 3 && resultLen == (k + 1)) {
+                                            setTimeout(function () {
+                                                setColVal(f_CTABLE_ID);
+                                            }, f_fresh_time);
+                                        }
+
+                                        //是否滚动
+                                        if (f_move_flag == 1) {
+                                            $("#" + f_CCOL_ID).liMarquee({
+                                                direction: 'left',
+                                                scrollamount: f_move_speed
+                                            });
+                                        }
+                                    }
+                                }
+                            } else {
+                                //当不为图片且没有数据时
+                                if (f_CCOL_TYPE_ID != 3) {
+                                    $("#" + f_CCOL_ID).empty();
+                                    if (f_fresh_time != 0 && resultLen == (k + 1)) {
+                                        setTimeout(function () {
+                                            setColVal(f_CTABLE_ID);
+                                        }, f_fresh_time);
+                                    }
+                                }
+                                //当处于登录状态且为图片时不清空
+                                if (f_CCOL_TYPE_ID == 3 && (replaceParam == null || replaceParam == '')) {
+                                    $("#" + f_CCOL_ID).empty();
+                                }
+
+                            }
+                        }
+                    } else {
+                        setTimeout(function () {
+                            setColVal(f_CTABLE_ID);
+                        }, 3000)
+                    }
+                },
+                error: function () {
+                    setTimeout(function () {
+                        setColVal(f_CTABLE_ID)
+                    }, 3000);
+                }
+            })
+        } catch (e) {
+            console.log(e);
+            setTimeout(function () {
+                setColVal(f_CTABLE_ID)
+            }, 5000);
+        }
+    }
+
+    //rgb转换为16进制
+    String.prototype.colorHex = function () {
+        // RGB颜色值的正则
+        var reg = /^(rgb|RGB)/;
+        var color = this;
+        if (reg.test(color)) {
+            var strHex = "#";
+            // 把RGB的3个数值变成数组
+            var colorArr = color.replace(/(?:\(|\)|rgb|RGB)*/g, "").split(",");
+            // 转成16进制
+            for (var i = 0; i < colorArr.length; i++) {
+                var hex = Number(colorArr[i]).toString(16);
+                if (hex === "0") {
+                    hex += hex;
+                }
+                strHex += hex;
+            }
+            return strHex;
+        } else {
+            return String(color);
+        }
+    };
+
+
+    //第二部分查询特殊div标签中是否有值
+    var scontent = "";
+    var commentimer = ""; //相同网页定时器
+
+    //查找特殊页面是否有值
+    function checkword(scontent) {
+        //查找特殊div中的值
+        scontent = "";
+        $('#specialpage').hide();
+        $("#specialpage").find("span").each(function () {
+            scontent += $(this).html();
+        });
+        if (scontent != '') {
+            //特殊页面时的时间
+            var special = $("#specialpage").attr("time");
+            //清除查找特殊页面是否有值时的定时器
+            clearInterval(specialtimer);
+            //清除普通页面轮询定时器
+            clearInterval(commentimer);
+            $(".commonpage").hide();
+            $("#specialpage").show();
+            setTimeout(function () {
+                //展示完后删除该数据
+                var delsql = $("#specialpage").attr("delsql");
+                //转化成base64
+                var base64 = btoa(delsql);
+                $.ajax({
+                    type: 'post',
+                    url: 'delspecialdata',
+                    timeout: 5000,
+                    data: {
+                        cql: base64,
+                        fccolid: $("#specialpage").find("span").parent().parent().attr("id")
+                    },
+                    async: true,
+                    success: function (res) {
+                    }
+                })
+                $("#specialpage").find("span").parent().empty();
+                console.log("特殊页面数据展示完毕，删除数据成功");
+                scontent = "";
+                carousel();
+                specialtimer = setInterval(checkword, 2000, scontent);
+            }, special)
+        }
+    }
+
+    var specialtimer = setInterval(checkword, 2000, scontent);
+    carousel();
+
+    //轮播显示普通页面
+    function carousel() {
+        var lens = $(".commonpage").length;
+        var index_now = 1;
+        if (lens > 1) {
+            var ti = $(".commonpage").attr("time")
+            commentimer = setInterval(function () {
+                index_now = (index_now == lens) ? 0 : index_now + 1;
+                //某个div显示，其他的隐藏
+                $(".commonpage").hide().eq(index_now).show();
+            }, ti);
+        } else {
+            $('#specialpage').hide();
+            $('.commonpage').show();
+        }
+    }
+
+
+    //第三部分监听是否有需要语音播报
+    var playaudio = setTimeout(function () {
+        listenVoice();
+    }, 2000);
+
+    function listenVoice() {
+        try {
+            $.ajax({
+                type: 'post',
+                url: 'getttsinfo',
+                timeout: 5000,
+                async: true,
+                data: {
+                    fledid: $("#pageNo").val()
+                },
+                success: function (res) {
+                    var list = res.list;
+                    var ttsVoiceOrders = res.ttsVoiceOrders;
+                    $("#ttsVoiceOrders").val(ttsVoiceOrders);
+                    if (list.length > 0) {
+                        playAudioQueue(list, 0); // 播放音频队列
+                    } else {
+                        // 无数据时，延迟下一次轮询
+                        setTimeout(listenVoice, 2000); // 改为3秒
+                    }
+                },
+                error: function () {
+                    setTimeout(listenVoice, 2000); // 失败时延迟重试
+                }
+            })
+        } catch (e) {
+            setTimeout(function () {
+                listenVoice()
+            }, 2000);
+        }
+    }
+
+    //播报语音信息
+
+    // 播放音频队列（递归代替 onended 嵌套）
+    /*  function playAudioQueue(list, index) {
+          if (index >= list.length) {
+              // 全部播完，重启轮询
+              setTimeout(listenVoice, 2000);
+              return;
+          }
+          var audio = document.getElementById("audio");
+          var audioVoice = [];
+          var audioVoiceIndex = 0;
+          $.ajax({
+              url: 'ttsStart?data=' + list[index].f_MESSAGE + '&f_led_id=' + $("#pageNo").val() + '&ttsVoiceOrders=' + $("#ttsVoiceOrders").val(),
+              async: true,
+              success: function (results) {
+                  audioVoice = results;
+                  audioVoiceIndex = 0;
+                  if (audioVoice.length > 0) {
+                      $("#audio").attr("src", 'audio/' + audioVoice[audioVoiceIndex]);
+                      audio.play();
+                  }
+              }
+          })
+          audio.onended = function () {
+              audioVoiceIndex++;
+              if (audioVoice.length > audioVoiceIndex) {
+                  $("#audio").attr("src", 'audio/' + audioVoice[audioVoiceIndex]);
+                  audio.play();
+              }
+              if (audioVoice.length <= audioVoiceIndex) {
+                  // 恢复视频声音
+                  $("video:visible").each(function () {
+                      this.muted = false;
+                      this.play().catch(e => console.log("视频恢复失败:", e));
+                  });
+                  // 播放下一条
+                  playAudioQueue(list, index + 1);
+              }
+          };
+      }*/
+    function playAudioQueue(list, index) {
+        // 参数验证
+        if (!list || !Array.isArray(list) || index < 0 || index >= list.length) {
+            console.log("Invalid parameters for playAudioQueue");
+            setTimeout(listenVoice, 2000);
+            return;
+        }
+
+        var audio = document.getElementById("audio");
+        var audioVoice = [];
+        var audioVoiceIndex = 0;
+        var retryCount = 0;
+        var MAX_RETRIES = 8;
+
+        // 清除之前的事件监听器，避免重复绑定
+        audio.onended = null;
+        audio.onerror = null;
+
+        // 静音所有可见视频
+        $("video:visible").each(function () {
+            this.muted = true;
+        });
+
+        $.ajax({
+            url: 'ttsStart?data=' + list[index].f_MESSAGE + '&f_led_id=' + $("#pageNo").val() + '&ttsVoiceOrders=' + $("#ttsVoiceOrders").val() + '&timeTemp=' + new Date().getTime(),
+            async: true,
+            timeout: 10000, // 添加超时设置
+            success: function (results) {
+                if (!results || !Array.isArray(results) || results.length === 0) {
+                    console.error("Invalid audio response");
+                    handlePlaybackError();
+                    return;
+                }
+
+                audioVoice = results;
+                audioVoiceIndex = 0;
+                retryCount = 0; // 重置重试计数
+
+                playCurrentAudioItem();
+            },
+            error: function (xhr, status, error) {
+                console.error("AJAX request failed:", status, error);
+                handlePlaybackError();
+            }
+        });
+
+        function playCurrentAudioItem() {
+            if (audioVoiceIndex >= audioVoice.length) {
+                // 当前消息的所有音频片段已播放完毕
+                handlePlaybackComplete();
+                return;
+            }
+
+            var audioSrc = 'audio/' + audioVoice[audioVoiceIndex];
+            $("#audio").attr("src", audioSrc);
+
+            var playPromise = audio.play();
+
+
+            if (playPromise !== undefined) {
+                playPromise.catch(function(error) {
+                    console.error("Audio play failed:", error);
+                    handlePlaybackError();
+                });
+            }
+        }
+
+        audio.onended = function () {
+            audioVoiceIndex++;
+            console.log("Audio playback ended, next index: " + audioVoiceIndex);
+            playCurrentAudioItem();
+        };
+
+        audio.onerror = function (event) {
+            console.error("Audio playback error:", event.target.error);
+            if (retryCount < MAX_RETRIES) {
+                retryCount++;
+                console.log("Retrying playback (" + retryCount + "/" + MAX_RETRIES + ")...");
+                setTimeout(playCurrentAudioItem, 1000); // 1秒后重试
+            } else {
+                console.error("Max retries exceeded for current audio item");
+                handlePlaybackError();
+                errorInfoHandle("最大重试次数已经用完,语音播放错误：" + event.target.error.message);
+            }
+        };
+
+        function handlePlaybackComplete() {
+            // 恢复视频声音
+            $("video:visible").each(function () {
+                this.muted = false;
+                var that = this;
+                this.play().catch(function(e) {
+                    console.log("视频恢复失败:", e);
+                });
+            });
+
+            // 播放下一条
+            playAudioQueue(list, index + 1);
+        }
+
+        function handlePlaybackError() {
+            audio.pause();
+            // 恢复视频声音
+            $("video:visible").each(function () {
+                this.muted = false;
+                var that = this;
+                this.play().catch(function(e) {
+                    console.log("视频恢复失败:", e);
+                });
+            });
+
+            // 重启轮询
+            setTimeout(listenVoice, 2000);
+        }
+
+        function errorInfoHandle(error) {
+            $.ajax({
+                type: 'post',
+                url: 'ttspalyerror?f_led_id=' + $("#pageNo").val() + '&error=' + error,
+                async: true,
+                success: function (results) {
+
+                }
+            })
+        }
+    }
+
+    //查询视频的播放信息  idDomName dom添加的容器id
+    function getVideoInfos(f_CPAGE_ID, idDomName) {
+        $.ajax({
+            url: 'getvideoinfos',
+            type: 'post',
+            data: {
+                f_CPAGE_ID: f_CPAGE_ID
+            },
+            async: true,
+            success: function (res) {
+                var videos = res.videos;
+                var cols = res.colInfos;
+                if (cols.length > 0 && videos.length > 0) {
+                    for (var m = 0; m < cols.length; m++) {
+                        (function(col) {
+                            var video_html = '<div class="animate" id="' + col.f_CCOL_ID +
+                                '" style="overflow: hidden;position:absolute;top:' + col.f_POS_Y +
+                                'px;left:' + col.f_POS_X + 'px;"><video id="' + col.f_CCOL_ID + 'video"  ' +
+                                'width="' + col.f_CCOL_WIDTH + '" height="' + col.f_CCOL_HEIGHT + '" autoplay="autoplay"  controls="controls" x-webkit-airplay="allow" webkit-playsinline playsinline   x5-video-player-type="h5"\n' +
+                                '    x5-video-player-fullscreen="true"\n' +
+                                '    preload="auto"></video>' +
+                                '<img id="' + col.f_CCOL_ID + 'img" ' +
+                                'width="' + col.f_CCOL_WIDTH + '" height="' + col.f_CCOL_HEIGHT + '" /></div>'
+                            $("#" + idDomName).append(video_html);
+                            var curr = 0; // 当前播放的索引
+                            handleImgVideoUrl(col.f_CCOL_ID, videos, curr);
+                            //突破视频声音极限
+                            var videoDom = document.getElementById(col.f_CCOL_ID + "video");
+                            //设置音量值
+                            if ($("#videoVolumeLimit").val() == '' || $("#videoVolumeLimit").val() == undefined || parseFloat($("#videoVolumeLimit").val()) <= 1) {
+                                videoDom.volume = $("#videoVolume").val();
+                            } else {
+                                //设置突破音量极限
+                                var maxVolume = parseFloat($("#videoVolumeLimit").val());
+                                amplifyMedia(videoDom, maxVolume);
+                            }
+                        })(cols[m]);
+                    }
+                }
+            }
+        })
+    }
+
+    //视频和图片支持的格式
+    var videoTypes = ["mp4", "webm", "ogg"];
+    var imgTypes = ["jpg", "png", "gif", "jpeg", "webp", "svg", "bmp", "tiff"];
+
+    //curr 当前播放的索引
+    function handleImgVideoUrl(colId, datas, curr) {
+        //  var vList = ['0:https://www.runoob.com/try/demo_source/movie.mp4','0:/videourl/注意事项.mp4']; // 播放列表
+        // 设置图片和视频播放
+        var vList = [];
+        for (var i = 0; i < datas.length; i++) {
+            var vFileType = datas[i].f_VFILE_TYPE.toLowerCase();
+            var f_VFILE_NAME = datas[i].f_VFILE_NAME;
+            if (videoTypes.indexOf(vFileType) !== -1) {
+                vList.push("0:/videourl/" + f_VFILE_NAME);
+            }
+            if (imgTypes.indexOf(vFileType) !== -1) {
+                vList.push("1:/videourl/" + f_VFILE_NAME + '?time=' + datas[i].f_VGF_STAY_TIME);
+            }
+        }
+        if (vList.length == 0) {
+            return;
+        }
+        var videoId = colId + "video";
+        var imgId = colId + "img";
+        var myvideo = document.getElementById(videoId);
+        var vLen = vList.length;
+        if (vList[curr].indexOf('0:') >= 0) {
+            $("#" + imgId).hide();
+            $("#" + videoId).show();
+            var url = vList[curr].replace('0:', '');
+            console.log("视频播放地址：" + url);
+            $('#' + videoId).attr('src', url);
+            //myvideo.load();
+            myvideo.play();
+        } else {
+            var url = vList[curr].replace('1:', '');
+            //停留时间
+            var time = parseInt(url.substring(url.lastIndexOf('=') + 1));
+            $("#" + videoId).hide();
+            $("#" + imgId).show();
+            $("#" + imgId).attr("src", url);
+            curr++;
+            if (curr >= vLen) {
+                curr = 0; //重新循环播放
+            }
+            setTimeout(function () {
+                handleImgVideoUrl(colId, datas, curr);
+            }, time * 1000);
+        }
+
+        //视频播放完执行的方法
+        myvideo.onended = null;
+        myvideo.onended = function () {
+            if (vList.length - 1 >= curr) {
+                curr++;
+            }
+            if (vList.length <= (curr)) {
+                curr = 0; //重新循环播放
+            }
+            if (vList[curr].indexOf('0:') >= 0) {
+                $("#" + imgId).hide();
+                $("#" + videoId).show();
+                var url = vList[curr].replace('0:', '');
+                $('#' + videoId).attr('src', url);
+                myvideo.play();
+                if (curr >= vLen) {
+                    curr = 0; //重新循环播放
+                }
+                handleImgVideoUrl(colId, datas, curr);
+            } else {
+                // 图片
+                var url = vList[curr].replace('1:', '');
+                //停留时间
+                var time = parseInt(url.substring(url.lastIndexOf('=') + 1));
+                $("#" + videoId).hide();
+                $("#" + imgId).show();
+                $("#" + imgId).attr("src", url);
+                if (curr >= vLen) {
+                    curr = 0; //重新循环播放
+                }
+                setTimeout(function () {
+                    handleImgVideoUrl(colId, datas, curr);
+                }, time * 1000);
+            }
+        };
+    }
+
+    //突破音频上限  音频声音最大值设置成1 该方法可以突破上限 1.4
+    // mediaElem video DOM对象   multiplier 声音最大值
+    function amplifyMedia(mediaElem, multiplier) {
+        mediaElem.volume = 1;
+        var audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        // 创建一个媒体元素源节点
+        var source = audioContext.createMediaElementSource(mediaElem);
+        // 创建一个增益节点（用于控制音量）
+        var gainNode = audioContext.createGain();
+        // 设置增益值（超过 1 表示音量放大）
+        gainNode.gain.value = multiplier;  //将音量设置为2倍
+        // 连接音频源节点到增益节点，再连接到输出
+        source.connect(gainNode).connect(audioContext.destination);
+    }
+
+
+    //监听页面销毁时调用
+    $(window).on('beforeunload', function () {
+        console.log("页面销毁");
+        alert("页面销毁");
+        clearInterval(commentimer);
+        clearInterval(specialtimer);
+        // 释放视频资源
+        $("video").each(function () {
+            this.pause();
+            this.removeAttribute("src");
+            this.load();
+        });
+    });
+
+</script>
+</html>
