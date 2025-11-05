@@ -193,14 +193,14 @@
                     }
                     $("div[f_CPAGE_ID='" + f_CPAGE_ID + "']").append(content);
                     var tableIds = [];
-                    for (var i = 0; i < res.length; i++) {
-                        if (tableIds.indexOf(res[i].f_CTABLE_ID) === -1) {
-                            tableIds.push(res[i].f_CTABLE_ID);
+                    for (var m = 0; m < res.length; m++) {
+                        if (tableIds.indexOf(res[m].f_CTABLE_ID) === -1) {
+                            tableIds.push(res[m].f_CTABLE_ID);
                         }
                     }
                     //对应的列中放置
-                    for (var i = 0; i < tableIds.length; i++) {
-                        setColVal(tableIds[i]);
+                    for (var n = 0; n < tableIds.length; n++) {
+                        setColVal(tableIds[n]);
                     }
                 }
             },
@@ -358,26 +358,29 @@
                                         var len = doms.length;
                                         //第一列显示
                                         if (len > 0) {
-                                            for (var i = 0; i < f_col_count; i++) {
-                                                $("#" + f_CCOL_ID).children().eq(i).show();
+                                            for (var m = 0; m < f_col_count; m++) {
+                                                $("#" + f_CCOL_ID).children().eq(m).show();
                                             }
                                         }
                                         var index = f_col_count;
                                         //不为图片时
                                         if (maxPage > 1 && len > 0 && f_fresh_time != 0 && f_fresh_time != null && f_CCOL_TYPE_ID != 3) {
-                                            var timer = setInterval(function () {
-                                                $("#" + f_CCOL_ID).children().hide();
-                                                if (index >= len) {
-                                                    clearInterval(timer);
-                                                    if (f_fresh_time != 0 && resultLen == (k + 1)) {
-                                                        setColVal(f_CTABLE_ID);
+                                            (function(colId, freshTime, colCount, totalLen, startIndex, tableId, resLen, loopK) {
+                                                var currentIndex = startIndex;
+                                                var timer = setInterval(function () {
+                                                    $("#" + colId).children().hide();
+                                                    if (currentIndex >= totalLen) {
+                                                        clearInterval(timer);
+                                                        if (freshTime != 0 && resLen == (loopK + 1)) {
+                                                            setColVal(tableId);
+                                                        }
                                                     }
-                                                }
-                                                for (var i = index; i < index + f_col_count; i++) {
-                                                    $("#" + f_CCOL_ID).children().eq(i).show();
-                                                }
-                                                index = index + f_col_count;
-                                            }, f_fresh_time);
+                                                    for (var m = currentIndex; m < currentIndex + colCount; m++) {
+                                                        $("#" + colId).children().eq(m).show();
+                                                    }
+                                                    currentIndex = currentIndex + colCount;
+                                                }, freshTime);
+                                            })(f_CCOL_ID, f_fresh_time, f_col_count, len, index, f_CTABLE_ID, resultLen, k);
                                         }
 
                                         //当不用翻页显示数据时
@@ -485,28 +488,31 @@
                                         var len = doms.length;
 
                                         if (len > 0) {
-                                            for (var i = 0; i < pageRows; i++) {
-                                                $("#" + f_CCOL_ID).children().eq(i).show();
+                                            for (var n = 0; n < pageRows; n++) {
+                                                $("#" + f_CCOL_ID).children().eq(n).show();
                                             }
                                         }
 
                                         var index = pageRows;
                                         // var index = f_col_count;
                                         if (maxPage > 1 && len > 0 && f_fresh_time != 0 && f_fresh_time != null && f_CCOL_TYPE_ID != 3) {
-                                            var timer = setInterval(function () {
-                                                $("#" + f_CCOL_ID).children().hide();
-                                                for (var i = index; i < index + pageRows; i++) {
-                                                    $("#" + f_CCOL_ID).children().eq(i).show();
-                                                }
-                                                if (index >= len) {
-                                                    clearInterval(timer);
-                                                    if (f_fresh_time != 0 && resultLen == (k + 1)) {
-                                                        setColVal(f_CTABLE_ID);
+                                            (function(colId, freshTime, rows, totalLen, startIndex, tableId, resLen, loopK) {
+                                                var currentIndex = startIndex;
+                                                var timer = setInterval(function () {
+                                                    $("#" + colId).children().hide();
+                                                    for (var n = currentIndex; n < currentIndex + rows; n++) {
+                                                        $("#" + colId).children().eq(n).show();
                                                     }
-                                                }
-                                                //   index = index + f_col_count;
-                                                index = index + pageRows;
-                                            }, f_fresh_time);
+                                                    if (currentIndex >= totalLen) {
+                                                        clearInterval(timer);
+                                                        if (freshTime != 0 && resLen == (loopK + 1)) {
+                                                            setColVal(tableId);
+                                                        }
+                                                    }
+                                                    //   currentIndex = currentIndex + f_col_count;
+                                                    currentIndex = currentIndex + rows;
+                                                }, freshTime);
+                                            })(f_CCOL_ID, f_fresh_time, pageRows, len, index, f_CTABLE_ID, resultLen, k);
                                         }
 
                                         //当不用翻页显示数据时
@@ -872,28 +878,30 @@
                 var videos = res.videos;
                 var cols = res.colInfos;
                 if (cols.length > 0 && videos.length > 0) {
-                    for (var i = 0; i < cols.length; i++) {
-                        var video_html = '<div class="animate" id="' + cols[i].f_CCOL_ID +
-                            '" style="overflow: hidden;position:absolute;top:' + cols[i].f_POS_Y +
-                            'px;left:' + cols[i].f_POS_X + 'px;"><video id="' + cols[i].f_CCOL_ID + 'video"  ' +
-                            'width="' + cols[i].f_CCOL_WIDTH + '" height="' + cols[i].f_CCOL_HEIGHT + '" autoplay="autoplay"  controls="controls" x-webkit-airplay="allow" webkit-playsinline playsinline   x5-video-player-type="h5"\n' +
-                            '    x5-video-player-fullscreen="true"\n' +
-                            '    preload="auto"></video>' +
-                            '<img id="' + cols[i].f_CCOL_ID + 'img" ' +
-                            'width="' + cols[i].f_CCOL_WIDTH + '" height="' + cols[i].f_CCOL_HEIGHT + '" /></div>'
-                        $("#" + idDomName).append(video_html);
-                        var curr = 0; // 当前播放的索引
-                        handleImgVideoUrl(cols[i].f_CCOL_ID, videos, curr);
-                        //突破视频声音极限
-                        var videoDom = document.getElementById(cols[i].f_CCOL_ID + "video");
-                        //设置音量值
-                        if ($("#videoVolumeLimit").val() == '' || $("#videoVolumeLimit").val() == undefined || parseFloat($("#videoVolumeLimit").val()) <= 1) {
-                            videoDom.volume = $("#videoVolume").val();
-                        } else {
-                            //设置突破音量极限
-                            var maxVolume = parseFloat($("#videoVolumeLimit").val());
-                            amplifyMedia(videoDom, maxVolume);
-                        }
+                    for (var m = 0; m < cols.length; m++) {
+                        (function(col) {
+                            var video_html = '<div class="animate" id="' + col.f_CCOL_ID +
+                                '" style="overflow: hidden;position:absolute;top:' + col.f_POS_Y +
+                                'px;left:' + col.f_POS_X + 'px;"><video id="' + col.f_CCOL_ID + 'video"  ' +
+                                'width="' + col.f_CCOL_WIDTH + '" height="' + col.f_CCOL_HEIGHT + '" autoplay="autoplay"  controls="controls" x-webkit-airplay="allow" webkit-playsinline playsinline   x5-video-player-type="h5"\n' +
+                                '    x5-video-player-fullscreen="true"\n' +
+                                '    preload="auto"></video>' +
+                                '<img id="' + col.f_CCOL_ID + 'img" ' +
+                                'width="' + col.f_CCOL_WIDTH + '" height="' + col.f_CCOL_HEIGHT + '" /></div>'
+                            $("#" + idDomName).append(video_html);
+                            var curr = 0; // 当前播放的索引
+                            handleImgVideoUrl(col.f_CCOL_ID, videos, curr);
+                            //突破视频声音极限
+                            var videoDom = document.getElementById(col.f_CCOL_ID + "video");
+                            //设置音量值
+                            if ($("#videoVolumeLimit").val() == '' || $("#videoVolumeLimit").val() == undefined || parseFloat($("#videoVolumeLimit").val()) <= 1) {
+                                videoDom.volume = $("#videoVolume").val();
+                            } else {
+                                //设置突破音量极限
+                                var maxVolume = parseFloat($("#videoVolumeLimit").val());
+                                amplifyMedia(videoDom, maxVolume);
+                            }
+                        })(cols[m]);
                     }
                 }
             }
